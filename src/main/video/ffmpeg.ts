@@ -1,11 +1,38 @@
 import ffmpeg from 'fluent-ffmpeg'
+import { join } from 'path'
+import { app } from 'electron'
 import type { ExportSettings } from '../../shared/types'
 
-// FFmpeg binary is expected on PATH or can be configured via FFMPEG_PATH env var
-// For production builds, bundle ffmpeg-static and set the path here
-if (process.env.FFMPEG_PATH) {
-  ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
+// Resolve FFmpeg binary path
+// Priority: FFMPEG_PATH env var > @ffmpeg-installer/ffmpeg > system PATH
+function resolveFFmpegPath(): void {
+  if (process.env.FFMPEG_PATH) {
+    ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
+    return
+  }
+
+  try {
+    // Try to use @ffmpeg-installer/ffmpeg if available
+    const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg')
+    if (ffmpegInstaller.path) {
+      ffmpeg.setFfmpegPath(ffmpegInstaller.path)
+      return
+    }
+  } catch {
+    // Fall through to system PATH
+  }
+
+  // In packaged app, check resources folder
+  if (app.isPackaged) {
+    const platform = process.platform
+    const ext = platform === 'win32' ? '.exe' : ''
+    const resourcePath = join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
+    ffmpeg.setFfmpegPath(resourcePath)
+  }
+  // Otherwise, rely on system PATH
 }
+
+resolveFFmpegPath()
 
 export function getVideoInfo(
   filePath: string

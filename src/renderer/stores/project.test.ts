@@ -167,7 +167,7 @@ describe('useProjectStore', () => {
       expect(data.clips).toHaveLength(1)
       expect(data.id).toBeTruthy()
       // Should not include store actions
-      expect((data as Record<string, unknown>).setName).toBeUndefined()
+      expect((data as unknown as Record<string, unknown>).setName).toBeUndefined()
     })
 
     it('loads a project', () => {

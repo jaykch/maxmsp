@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { DesktopSource, RecordingState, InputEvent } from '../../shared/types'
+import { useProjectStore } from './project'
+import { generateAutoZoomKeyframes } from '../utils/keyframes'
 
 interface RecordingStore {
   state: RecordingState
@@ -9,6 +11,12 @@ interface RecordingStore {
   duration: number
   inputEvents: InputEvent[]
   showSourcePicker: boolean
+
+  // Internal recording state (not serialized)
+  _mediaRecorder: MediaRecorder | null
+  _recordedChunks: Blob[]
+  _stream: MediaStream | null
+  _recordingStartTime: number
 
   // Actions
   setState: (state: RecordingState) => void
@@ -31,6 +39,10 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
   duration: 0,
   inputEvents: [],
   showSourcePicker: false,
+  _mediaRecorder: null,
+  _recordedChunks: [],
+  _stream: null,
+  _recordingStartTime: 0,
 
   setState: (state) => set({ state }),
   setSources: (sources) => set({ sources }),
@@ -51,20 +63,109 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
 
     set({ state: 'preparing' })
 
-    const filePath = await window.api.startRecording({
-      sourceId: selectedSource.id,
-      sourceName: selectedSource.name,
-      audio: true,
-      frameRate: 30,
-      resolution: { width: 1920, height: 1080 }
-    })
+    try {
+      // Tell main process to start input tracking and get file path
+      const filePath = await window.api.startRecording({
+        sourceId: selectedSource.id,
+        sourceName: selectedSource.name,
+        audio: true,
+        frameRate: 30,
+        resolution: { width: 1920, height: 1080 }
+      })
 
-    set({ state: 'recording', filePath })
+      // Get the media stream from desktopCapturer via getUserMedia
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: selectedSource.id,
+            minWidth: 1280,
+            maxWidth: 3840,
+            minHeight: 720,
+            maxHeight: 2160,
+            maxFrameRate: 30
+          }
+        } as MediaTrackConstraints
+      })
+
+      const chunks: Blob[] = []
+      const recorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9',
+        videoBitsPerSecond: 8000000
+      })
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data)
+        }
+      }
+
+      recorder.onstop = async () => {
+        // Assemble blob and save to disk
+        const blob = new Blob(chunks, { type: 'video/webm' })
+        const buffer = await blob.arrayBuffer()
+        window.api.saveRecordingChunk(filePath, buffer)
+
+        const duration = (Date.now() - get()._recordingStartTime) / 1000
+
+        // Stop input tracking on main process
+        const { inputEvents } = await window.api.stopRecording()
+
+        // Stop stream tracks
+        stream.getTracks().forEach((track) => track.stop())
+
+        // Add clip to project store
+        const projectStore = useProjectStore.getState()
+        projectStore.addClip(filePath, duration)
+
+        // Generate auto-zoom keyframes from click events
+        if (inputEvents.length > 0) {
+          const keyframes = generateAutoZoomKeyframes(inputEvents, 1920, 1080)
+          for (const kf of keyframes) {
+            projectStore.addZoomKeyframe({
+              time: kf.time,
+              x: kf.x,
+              y: kf.y,
+              scale: kf.scale,
+              easing: kf.easing
+            })
+          }
+        }
+
+        set({
+          state: 'idle',
+          inputEvents,
+          duration,
+          _mediaRecorder: null,
+          _recordedChunks: [],
+          _stream: null
+        })
+      }
+
+      // Start recording with 1-second timeslices
+      recorder.start(1000)
+
+      set({
+        state: 'recording',
+        filePath,
+        _mediaRecorder: recorder,
+        _recordedChunks: chunks,
+        _stream: stream,
+        _recordingStartTime: Date.now()
+      })
+    } catch (err) {
+      console.error('Failed to start recording:', err)
+      set({ state: 'idle' })
+    }
   },
 
   stopRecording: async () => {
+    const { _mediaRecorder } = get()
+    if (!_mediaRecorder || _mediaRecorder.state === 'inactive') return
+
     set({ state: 'stopping' })
-    const { inputEvents } = await window.api.stopRecording()
-    set({ state: 'idle', inputEvents })
+    // This triggers the onstop handler above which does the rest
+    _mediaRecorder.stop()
   }
 }))

@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback } from 'react'
 import { PreviewRenderer } from '../../canvas/renderer'
 import { useProjectStore } from '../../stores/project'
 import { useUIStore } from '../../stores/ui'
+import { useRecordingStore } from '../../stores/recording'
 
 export const Preview: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -18,6 +19,7 @@ export const Preview: React.FC = () => {
   const currentTime = useUIStore((s) => s.currentTime)
   const isPlaying = useUIStore((s) => s.isPlaying)
   const setCurrentTime = useUIStore((s) => s.setCurrentTime)
+  const recordingState = useRecordingStore((s) => s.state)
 
   // Initialize renderer
   useEffect(() => {
@@ -50,9 +52,15 @@ export const Preview: React.FC = () => {
   useEffect(() => {
     if (clips.length === 0 || !videoRef.current) return
     const video = videoRef.current
-    video.src = `file://${clips[0].filePath}`
+    // Use file:// protocol for local files in Electron
+    const src = clips[0].filePath.startsWith('file://')
+      ? clips[0].filePath
+      : `file://${clips[0].filePath}`
+    video.src = src
     video.load()
-    rendererRef.current?.setVideo(video)
+    video.onloadedmetadata = () => {
+      rendererRef.current?.setVideo(video)
+    }
   }, [clips])
 
   // Render loop
@@ -91,16 +99,29 @@ export const Preview: React.FC = () => {
     }
   }, [isPlaying, currentTime])
 
+  const hasClips = clips.length > 0
+  const isRecording = recordingState === 'recording'
+
   return (
     <div className="flex-1 relative bg-surface flex items-center justify-center p-4">
-      {clips.length === 0 ? (
+      {!hasClips && !isRecording ? (
         <div className="text-white/30 text-center">
           <div className="text-4xl mb-3">&#127916;</div>
           <p className="text-lg">No recording yet</p>
-          <p className="text-sm mt-1">Click "Record" to capture your screen</p>
+          <p className="text-sm mt-1">Click &quot;Record&quot; to capture your screen</p>
         </div>
       ) : null}
-      <canvas ref={canvasRef} className="max-w-full max-h-full" />
+      {isRecording ? (
+        <div className="text-white text-center">
+          <div className="text-4xl mb-3 animate-pulse">&#128308;</div>
+          <p className="text-lg">Recording...</p>
+          <p className="text-sm mt-1 text-white/50">Click &quot;Stop Recording&quot; when done</p>
+        </div>
+      ) : null}
+      <canvas
+        ref={canvasRef}
+        className={`max-w-full max-h-full ${!hasClips ? 'hidden' : ''}`}
+      />
       <video ref={videoRef} className="hidden" muted playsInline />
     </div>
   )

@@ -28,7 +28,7 @@ const mockFfmpegChain = {
 }
 
 vi.mock('fluent-ffmpeg', () => {
-  const ffmpeg = vi.fn(() => mockFfmpegChain)
+  const ffmpeg = vi.fn(() => mockFfmpegChain) as unknown as Record<string, unknown>
   ffmpeg.setFfmpegPath = vi.fn()
   return { default: ffmpeg }
 })
