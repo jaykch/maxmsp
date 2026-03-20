@@ -22,7 +22,6 @@ export const ExportDialog: React.FC = () => {
 
   useEffect(() => {
     if (!showExportDialog) return
-
     window.api.onExportProgress((percent) => setExportProgress(percent))
     window.api.onExportDone(() => setExportState('done'))
     window.api.onExportError(() => setExportState('error'))
@@ -43,65 +42,73 @@ export const ExportDialog: React.FC = () => {
     setExportProgress(0)
   }
 
+  const selectClass = "w-full bg-white/[0.04] border border-surface-border rounded-md px-2.5 py-2 text-[12px] text-white/60 focus:outline-none focus:border-white/15 transition-colors"
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-surface-light rounded-xl border border-white/10 p-6 w-96">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Export Video</h2>
-          <button onClick={handleClose} className="text-white/40 hover:text-white text-xl">
-            &#x2715;
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-surface-light rounded-xl border border-surface-border p-5 w-80 shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-[14px] font-semibold text-white/90">Export</h2>
+          <button
+            onClick={handleClose}
+            className="w-6 h-6 flex items-center justify-center rounded-md text-white/30 hover:text-white/60 hover:bg-white/5 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M1 1l10 10M11 1L1 11" />
+            </svg>
           </button>
         </div>
 
         {exportState === 'exporting' ? (
           <div className="py-8">
-            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden mb-2">
+            <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden mb-3">
               <div
                 className="h-full bg-accent transition-all duration-300 rounded-full"
                 style={{ width: `${exportProgress}%` }}
               />
             </div>
-            <p className="text-sm text-white/50 text-center">
-              Exporting... {Math.round(exportProgress)}%
+            <p className="text-[11px] text-white/30 text-center font-mono">
+              {Math.round(exportProgress)}%
             </p>
           </div>
         ) : exportState === 'done' ? (
           <div className="py-8 text-center">
-            <p className="text-green-400 text-lg mb-2">Export complete!</p>
+            <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#10b981" strokeWidth="2">
+                <polyline points="3,8 7,12 13,4" />
+              </svg>
+            </div>
+            <p className="text-[13px] text-white/70 mb-4">Export complete</p>
             <button
               onClick={handleClose}
-              className="px-4 py-2 bg-accent rounded text-white text-sm"
+              className="px-4 py-1.5 bg-white/10 hover:bg-white/15 rounded-md text-[12px] text-white/70 transition-colors"
             >
-              Close
+              Done
             </button>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Format */}
             <div>
-              <label className="text-xs text-white/50 block mb-1">Format</label>
+              <label className="text-[10px] text-white/30 uppercase tracking-wider block mb-1.5">Format</label>
               <select
                 value={settings.format}
-                onChange={(e) =>
-                  setSettings({ ...settings, format: e.target.value as 'mp4' | 'webm' })
-                }
-                className="w-full bg-surface border border-white/10 rounded px-2 py-1.5 text-sm text-white/80"
+                onChange={(e) => setSettings({ ...settings, format: e.target.value as 'mp4' | 'webm' })}
+                className={selectClass}
               >
                 <option value="mp4">MP4 (H.264)</option>
                 <option value="webm">WebM (VP9)</option>
               </select>
             </div>
 
-            {/* Resolution */}
             <div>
-              <label className="text-xs text-white/50 block mb-1">Resolution</label>
+              <label className="text-[10px] text-white/30 uppercase tracking-wider block mb-1.5">Resolution</label>
               <select
                 value={`${settings.resolution.width}x${settings.resolution.height}`}
                 onChange={(e) => {
                   const [w, h] = e.target.value.split('x').map(Number)
                   setSettings({ ...settings, resolution: { width: w, height: h } })
                 }}
-                className="w-full bg-surface border border-white/10 rounded px-2 py-1.5 text-sm text-white/80"
+                className={selectClass}
               >
                 {Object.entries(RESOLUTION_PRESETS).map(([name, res]) => (
                   <option key={name} value={`${res.width}x${res.height}`}>
@@ -111,33 +118,26 @@ export const ExportDialog: React.FC = () => {
               </select>
             </div>
 
-            {/* Quality */}
             <div>
-              <label className="text-xs text-white/50 block mb-1">Quality</label>
+              <label className="text-[10px] text-white/30 uppercase tracking-wider block mb-1.5">Quality</label>
               <select
                 value={settings.quality}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    quality: e.target.value as ExportSettings['quality']
-                  })
-                }
-                className="w-full bg-surface border border-white/10 rounded px-2 py-1.5 text-sm text-white/80"
+                onChange={(e) => setSettings({ ...settings, quality: e.target.value as ExportSettings['quality'] })}
+                className={selectClass}
               >
-                <option value="low">Low (smaller file)</option>
+                <option value="low">Low</option>
                 <option value="medium">Medium</option>
-                <option value="high">High (recommended)</option>
-                <option value="lossless">Lossless (large file)</option>
+                <option value="high">High</option>
+                <option value="lossless">Lossless</option>
               </select>
             </div>
 
-            {/* FPS */}
             <div>
-              <label className="text-xs text-white/50 block mb-1">Frame Rate</label>
+              <label className="text-[10px] text-white/30 uppercase tracking-wider block mb-1.5">Frame Rate</label>
               <select
                 value={settings.fps}
                 onChange={(e) => setSettings({ ...settings, fps: Number(e.target.value) })}
-                className="w-full bg-surface border border-white/10 rounded px-2 py-1.5 text-sm text-white/80"
+                className={selectClass}
               >
                 <option value={24}>24 fps</option>
                 <option value={30}>30 fps</option>
@@ -147,7 +147,7 @@ export const ExportDialog: React.FC = () => {
 
             <button
               onClick={handleExport}
-              className="w-full py-2 bg-accent hover:bg-accent-hover rounded text-white font-medium transition-colors"
+              className="w-full py-2 bg-accent hover:bg-accent-hover rounded-md text-white text-[12px] font-medium transition-all shadow-glow mt-2"
             >
               Export
             </button>

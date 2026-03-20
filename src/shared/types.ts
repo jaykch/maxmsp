@@ -33,6 +33,23 @@ export interface ZoomKeyframe {
   easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
 }
 
+/** A zoom segment defines a window where zoom is active and cursor is followed */
+export interface ZoomSegment {
+  id: string
+  startTime: number
+  endTime: number
+  scale: number
+  /** Normalized click position (0-1) that starts the zoom */
+  clickX: number
+  clickY: number
+}
+
+export interface CameraState {
+  x: number
+  y: number
+  scale: number
+}
+
 export interface Clip {
   id: string
   filePath: string
@@ -49,6 +66,8 @@ export interface BackgroundConfig {
   gradientEnd?: string
   gradientAngle?: number
   imagePath?: string
+  /** Original filename for resolving in main process (e.g. 'gradient-mesh.jpg') */
+  sourceFileName?: string
 }
 
 export interface DeviceFrame {
@@ -58,12 +77,26 @@ export interface DeviceFrame {
   padding: { top: number; right: number; bottom: number; left: number }
 }
 
+export interface CropConfig {
+  enabled: boolean
+  /** Aspect ratio string like '16:9', '9:16', '4:3', '1:1', or 'free' */
+  aspect: string
+  /** Normalized crop rect (0-1) */
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface ProjectData {
   id: string
   name: string
   clips: Clip[]
   zoomKeyframes: ZoomKeyframe[]
+  zoomSegments: ZoomSegment[]
+  inputEvents: InputEvent[]
   background: BackgroundConfig
+  crop: CropConfig
   deviceFrame: DeviceFrame | null
   padding: number
   borderRadius: number

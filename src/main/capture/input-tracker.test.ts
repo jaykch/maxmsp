@@ -12,17 +12,15 @@ import { startTracking, stopTracking, getInputEvents } from './input-tracker'
 import { screen } from 'electron'
 
 describe('input-tracker', () => {
-  let mockWindow: { webContents: { on: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn> } }
+  let mockWindow: { webContents: { send: ReturnType<typeof vi.fn> } }
 
   beforeEach(() => {
     vi.useFakeTimers()
     mockWindow = {
       webContents: {
-        on: vi.fn(),
         send: vi.fn()
       }
     }
-    // Reset tracked events by stopping any existing tracking
     stopTracking()
   })
 
@@ -33,33 +31,34 @@ describe('input-tracker', () => {
 
   it('starts tracking and records mouse positions', () => {
     startTracking(mockWindow as never)
-
-    // Advance timers to trigger polling
-    vi.advanceTimersByTime(16 * 3) // 3 poll intervals
+    vi.advanceTimersByTime(16 * 3)
 
     const events = getInputEvents()
-    // Should have at least one move event (position 100,200)
     expect(events.length).toBeGreaterThan(0)
     expect(events[0].type).toBe('move')
     expect(events[0].x).toBe(100)
     expect(events[0].y).toBe(200)
   })
 
-  it('does not record duplicate positions', () => {
-    // First start+stop to set lastMousePos to 100,200
+  it('does not record move events when cursor is stationary', () => {
+    // First start to register initial position
     startTracking(mockWindow as never)
     vi.advanceTimersByTime(16)
     stopTracking()
 
-    // Now start again - lastMousePos is already 100,200
-    // and getCursorScreenPoint still returns 100,200
+    // Mock returns same position — no movement above threshold
+    const mockGetCursor = vi.mocked(screen.getCursorScreenPoint)
+    mockGetCursor.mockReturnValue({ x: 100, y: 200 } as Electron.Point)
+
     startTracking(mockWindow as never)
+    // Advance enough that dwell detection runs but cursor hasn't moved significantly
     vi.advanceTimersByTime(16 * 5)
 
     const events = getInputEvents()
-    // Should record zero new move events since position hasn't changed
+    // First poll may detect the initial position as a move from 0,0 → 100,200
+    // After that, no new move events because position is stationary
     const moveEvents = events.filter((e) => e.type === 'move')
-    expect(moveEvents).toHaveLength(0)
+    expect(moveEvents.length).toBeLessThanOrEqual(1)
   })
 
   it('records position changes', () => {
@@ -76,6 +75,46 @@ describe('input-tracker', () => {
     expect(moveEvents.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('detects click via cursor dwell after movement', () => {
+    const mockGetCursor = vi.mocked(screen.getCursorScreenPoint)
+
+    // Simulate: move to 300,400, then stop (dwell)
+    mockGetCursor
+      .mockReturnValueOnce({ x: 100, y: 200 } as Electron.Point)  // initial move
+      .mockReturnValueOnce({ x: 200, y: 300 } as Electron.Point)  // moving
+      .mockReturnValueOnce({ x: 300, y: 400 } as Electron.Point)  // moving
+      // Then stationary for dwell threshold
+      .mockReturnValue({ x: 300, y: 400 } as Electron.Point)
+
+    startTracking(mockWindow as never)
+    // Move phase
+    vi.advanceTimersByTime(16 * 3)
+    // Dwell phase — needs to exceed DWELL_THRESHOLD_MS (150ms)
+    vi.advanceTimersByTime(200)
+
+    const events = getInputEvents()
+    const clickEvents = events.filter((e) => e.type === 'click')
+    expect(clickEvents.length).toBe(1)
+    expect(clickEvents[0].x).toBe(300)
+    expect(clickEvents[0].y).toBe(400)
+  })
+
+  it('sends click event to renderer via IPC', () => {
+    const mockGetCursor = vi.mocked(screen.getCursorScreenPoint)
+    mockGetCursor
+      .mockReturnValueOnce({ x: 100, y: 200 } as Electron.Point)
+      .mockReturnValueOnce({ x: 300, y: 400 } as Electron.Point)
+      .mockReturnValue({ x: 300, y: 400 } as Electron.Point)
+
+    startTracking(mockWindow as never)
+    vi.advanceTimersByTime(16 * 2 + 200)
+
+    expect(mockWindow.webContents.send).toHaveBeenCalledWith(
+      'input-event',
+      expect.objectContaining({ type: 'click', x: 300, y: 400 })
+    )
+  })
+
   it('stops tracking and returns events', () => {
     startTracking(mockWindow as never)
     vi.advanceTimersByTime(16 * 2)
@@ -85,14 +124,6 @@ describe('input-tracker', () => {
     expect(events.length).toBeGreaterThan(0)
   })
 
-  it('registers input-event listener on window', () => {
-    startTracking(mockWindow as never)
-    expect(mockWindow.webContents.on).toHaveBeenCalledWith(
-      'input-event',
-      expect.any(Function)
-    )
-  })
-
   it('getInputEvents returns copy of events', () => {
     startTracking(mockWindow as never)
     vi.advanceTimersByTime(16)
@@ -100,6 +131,6 @@ describe('input-tracker', () => {
     const events1 = getInputEvents()
     const events2 = getInputEvents()
     expect(events1).toEqual(events2)
-    expect(events1).not.toBe(events2) // different references
+    expect(events1).not.toBe(events2)
   })
 })

@@ -1,10 +1,18 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
-import type { Clip, ZoomKeyframe, BackgroundConfig, DeviceFrame, ProjectData } from '../../shared/types'
+import type { Clip, ZoomKeyframe, ZoomSegment, InputEvent, CropConfig, BackgroundConfig, DeviceFrame, ProjectData } from '../../shared/types'
 import { DEFAULT_BACKGROUND, DEFAULT_PADDING, DEFAULT_BORDER_RADIUS } from '../../shared/constants'
 
+const DEFAULT_CROP: CropConfig = {
+  enabled: false,
+  aspect: '16:9',
+  x: 0,
+  y: 0,
+  width: 1,
+  height: 1
+}
+
 interface ProjectState extends ProjectData {
-  // Actions
   setName: (name: string) => void
   addClip: (filePath: string, duration: number) => void
   removeClip: (id: string) => void
@@ -12,7 +20,11 @@ interface ProjectState extends ProjectData {
   addZoomKeyframe: (keyframe: Omit<ZoomKeyframe, 'id'>) => void
   removeZoomKeyframe: (id: string) => void
   updateZoomKeyframe: (id: string, updates: Partial<ZoomKeyframe>) => void
+  addZoomSegment: (segment: Omit<ZoomSegment, 'id'>) => void
+  removeZoomSegment: (id: string) => void
+  updateZoomSegment: (id: string, updates: Partial<ZoomSegment>) => void
   setBackground: (bg: BackgroundConfig) => void
+  setCrop: (crop: Partial<CropConfig>) => void
   setDeviceFrame: (frame: DeviceFrame | null) => void
   setPadding: (padding: number) => void
   setBorderRadius: (radius: number) => void
@@ -27,7 +39,10 @@ const initialState: Omit<ProjectData, 'id'> = {
   name: 'Untitled',
   clips: [],
   zoomKeyframes: [],
+  zoomSegments: [],
+  inputEvents: [],
   background: DEFAULT_BACKGROUND,
+  crop: DEFAULT_CROP,
   deviceFrame: null,
   padding: DEFAULT_PADDING,
   borderRadius: DEFAULT_BORDER_RADIUS,
@@ -81,7 +96,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
     })),
 
+  addZoomSegment: (segment) =>
+    set((state) => ({
+      zoomSegments: [...state.zoomSegments, { ...segment, id: uuid() }]
+    })),
+
+  removeZoomSegment: (id) =>
+    set((state) => ({
+      zoomSegments: state.zoomSegments.filter((s) => s.id !== id)
+    })),
+
+  updateZoomSegment: (id, updates) =>
+    set((state) => ({
+      zoomSegments: state.zoomSegments.map((s) =>
+        s.id === id ? { ...s, ...updates } : s
+      )
+    })),
+
   setBackground: (background) => set({ background }),
+  setCrop: (crop) => set((state) => ({ crop: { ...state.crop, ...crop } })),
   setDeviceFrame: (deviceFrame) => set({ deviceFrame }),
   setPadding: (padding) => set({ padding }),
   setBorderRadius: (borderRadius) => set({ borderRadius }),
@@ -99,7 +132,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       name: state.name,
       clips: state.clips,
       zoomKeyframes: state.zoomKeyframes,
+      zoomSegments: state.zoomSegments,
+      inputEvents: state.inputEvents,
       background: state.background,
+      crop: state.crop,
       deviceFrame: state.deviceFrame,
       padding: state.padding,
       borderRadius: state.borderRadius,

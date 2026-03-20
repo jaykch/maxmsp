@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { DesktopSource, RecordingState, InputEvent } from '../../shared/types'
 import { useProjectStore } from './project'
-import { generateAutoZoomKeyframes } from '../utils/keyframes'
+import { generateAutoZoomKeyframes, generateZoomSegments } from '../utils/keyframes'
 
 interface RecordingStore {
   state: RecordingState
@@ -104,13 +104,18 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
       recorder.onstop = async () => {
         // Assemble blob and save to disk
         const blob = new Blob(chunks, { type: 'video/webm' })
+        console.log('[recording] onstop: blob size =', blob.size, 'bytes')
         const buffer = await blob.arrayBuffer()
-        window.api.saveRecordingChunk(filePath, buffer)
+        console.log('[recording] saving to disk:', filePath)
+        await window.api.saveRecordingChunk(filePath, buffer)
+        console.log('[recording] file saved successfully')
 
         const duration = (Date.now() - get()._recordingStartTime) / 1000
+        console.log('[recording] duration:', duration, 'seconds')
 
         // Stop input tracking on main process
         const { inputEvents } = await window.api.stopRecording()
+        console.log('[recording] input events:', inputEvents.length)
 
         // Stop stream tracks
         stream.getTracks().forEach((track) => track.stop())
@@ -118,10 +123,20 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
         // Add clip to project store
         const projectStore = useProjectStore.getState()
         projectStore.addClip(filePath, duration)
+        console.log('[recording] clip added to project store')
 
-        // Generate auto-zoom keyframes from click events
+        // Generate zoom segments + legacy keyframes and store input events for cursor follow
         if (inputEvents.length > 0) {
+          const segments = generateZoomSegments(inputEvents, 1920, 1080)
           const keyframes = generateAutoZoomKeyframes(inputEvents, 1920, 1080)
+
+          // Store zoom segments and input events for the camera follow system
+          useProjectStore.setState({
+            zoomSegments: segments,
+            inputEvents: inputEvents
+          })
+
+          // Also add legacy keyframes for timeline visualization
           for (const kf of keyframes) {
             projectStore.addZoomKeyframe({
               time: kf.time,
@@ -155,7 +170,7 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
         _recordingStartTime: Date.now()
       })
     } catch (err) {
-      console.error('Failed to start recording:', err)
+      console.error('[recording] Failed to start recording:', err)
       set({ state: 'idle' })
     }
   },

@@ -89,7 +89,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.on('save-recording-chunk', async (_event, filePath: string, chunk: ArrayBuffer) => {
+  ipcMain.handle('save-recording-chunk', async (_event, filePath: string, chunk: ArrayBuffer) => {
     await saveRecordingChunk(filePath, Buffer.from(chunk))
   })
 }

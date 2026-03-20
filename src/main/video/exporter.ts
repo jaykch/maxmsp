@@ -1,13 +1,13 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, app } from 'electron'
 import { join, dirname } from 'path'
 import { mkdir } from 'fs/promises'
+import { existsSync } from 'fs'
 import ffmpeg from 'fluent-ffmpeg'
 import type { ProjectData, ExportSettings, ZoomKeyframe, BackgroundConfig } from '../../shared/types'
 import { IPC } from '../../shared/constants'
 
-if (process.env.FFMPEG_PATH) {
-  ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
-}
+// Import ffmpeg.ts to trigger the FFmpeg path resolver (handles env var, @ffmpeg-installer, bundled, system PATH)
+import './ffmpeg'
 
 function buildBackgroundFilter(bg: BackgroundConfig, width: number, height: number): string {
   if (bg.type === 'solid' && bg.color) {
@@ -55,6 +55,25 @@ function interpolateKeyframes(
   return { x: 0.5, y: 0.5, scale: 1 }
 }
 
+/**
+ * Resolve a wallpaper source filename to an absolute filesystem path.
+ * Checks dev source path first, then production output path.
+ */
+function resolveWallpaperPath(sourceFileName: string): string | null {
+  const candidates = [
+    // Dev mode: source directory
+    join(app.getAppPath(), 'src/renderer/assets/wallpapers', sourceFileName),
+    // Production: built output
+    join(__dirname, '../renderer/assets/wallpapers', sourceFileName),
+    join(process.resourcesPath || '', 'app/out/renderer/assets/wallpapers', sourceFileName)
+  ]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
 export async function exportVideo(
   mainWindow: BrowserWindow,
   project: ProjectData,
@@ -67,31 +86,49 @@ export async function exportVideo(
   const clip = project.clips[0]
   if (!clip) throw new Error('No clips to export')
 
-  // Build FFmpeg filter complex for zoom/pan and background compositing
-  const filters: string[] = []
   const bg = project.background
-
-  // Scale video with padding
   const padding = project.padding || 0
   const videoWidth = width - padding * 2
   const videoHeight = height - padding * 2
 
-  // Background color filter
-  let bgFilter: string
-  if (bg.type === 'solid') {
-    bgFilter = `color=c=${bg.color || '#000000'}:s=${width}x${height}`
-  } else {
-    bgFilter = `color=c=${bg.gradientStart || '#667eea'}:s=${width}x${height}`
-  }
+  // Check if we have a wallpaper image to use as background
+  const wallpaperPath = bg.type === 'image' && bg.sourceFileName
+    ? resolveWallpaperPath(bg.sourceFileName)
+    : null
 
-  filters.push(`[0:v]scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease[scaled]`)
-  filters.push(`${bgFilter}[bg]`)
-  filters.push(`[bg][scaled]overlay=(W-w)/2:(H-h)/2[out]`)
+  const filters: string[] = []
+
+  if (wallpaperPath) {
+    // Two inputs: [0] = video, [1] = wallpaper image
+    // Scale wallpaper to output size, scale video with padding, overlay
+    filters.push(`[1:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}[bg]`)
+    filters.push(`[0:v]scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease[scaled]`)
+    filters.push(`[bg][scaled]overlay=(W-w)/2:(H-h)/2[out]`)
+  } else {
+    // Solid/gradient: use color filter as background
+    let bgFilter: string
+    if (bg.type === 'solid') {
+      bgFilter = `color=c=${bg.color || '#000000'}:s=${width}x${height}`
+    } else if (bg.type === 'gradient') {
+      bgFilter = `color=c=${bg.gradientStart || '#667eea'}:s=${width}x${height}`
+    } else {
+      bgFilter = `color=c=#000000:s=${width}x${height}`
+    }
+    filters.push(`[0:v]scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease[scaled]`)
+    filters.push(`${bgFilter}[bg]`)
+    filters.push(`[bg][scaled]overlay=(W-w)/2:(H-h)/2[out]`)
+  }
 
   return new Promise((resolve, reject) => {
     const command = ffmpeg(clip.filePath)
+
+    // Add wallpaper as second input if available
+    if (wallpaperPath) {
+      command.input(wallpaperPath).inputOptions('-loop', '1')
+    }
+
+    command
       .complexFilter(filters.join(';'), 'out')
-      .size(`${width}x${height}`)
       .fps(settings.fps)
 
     // Set codec

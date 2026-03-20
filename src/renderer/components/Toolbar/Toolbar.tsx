@@ -32,49 +32,61 @@ export const Toolbar: React.FC = () => {
   }
 
   return (
-    <div className="h-12 bg-surface-light border-b border-white/10 flex items-center justify-between px-4 -webkit-app-region-drag">
-      {/* Left: Project name */}
+    <div className="h-11 bg-surface-light/80 backdrop-blur-md border-b border-surface-border flex items-center justify-between px-4 -webkit-app-region-drag">
+      {/* Left: Logo + project name */}
       <div className="flex items-center gap-3">
-        <span className="text-accent font-bold text-sm tracking-wider">CLIPSTUDIO</span>
+        <span className="text-[11px] font-bold tracking-[0.2em] text-white/40 uppercase">ClipStudio</span>
+        <div className="w-px h-4 bg-white/10" />
         <input
           type="text"
           value={projectName}
           onChange={(e) => setName(e.target.value)}
-          className="bg-transparent border border-white/10 rounded px-2 py-1 text-sm text-white/80 w-40 focus:outline-none focus:border-accent"
+          className="bg-transparent text-[13px] text-white/70 w-36 focus:outline-none focus:text-white transition-colors"
+          spellCheck={false}
         />
       </div>
 
-      {/* Center: Recording controls */}
-      <div className="flex items-center gap-2">
+      {/* Center: Record */}
+      <div className="flex items-center">
         <button
           onClick={handleRecord}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[12px] font-medium transition-all ${
             recordingState === 'recording'
-              ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-              : 'bg-accent hover:bg-accent-hover text-white'
+              ? 'bg-danger hover:bg-danger-hover text-white shadow-[0_0_16px_rgba(239,68,68,0.3)]'
+              : 'bg-white/10 hover:bg-white/15 text-white/90'
           }`}
         >
-          {recordingState === 'recording' ? 'Stop Recording' : 'Record'}
+          {recordingState === 'recording' ? (
+            <>
+              <span className="w-2 h-2 rounded-sm bg-white animate-pulse" />
+              Stop
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-danger" />
+              Record
+            </>
+          )}
         </button>
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <button
           onClick={handleSave}
-          className="px-3 py-1.5 rounded text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          className="px-3 py-1.5 rounded-md text-[12px] text-white/50 hover:text-white/80 hover:bg-white/5 transition-all"
         >
           Save
         </button>
         <button
           onClick={handleLoad}
-          className="px-3 py-1.5 rounded text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          className="px-3 py-1.5 rounded-md text-[12px] text-white/50 hover:text-white/80 hover:bg-white/5 transition-all"
         >
           Open
         </button>
         <button
           onClick={() => setShowExportDialog(true)}
-          className="px-4 py-1.5 rounded bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+          className="px-4 py-1.5 rounded-md bg-accent hover:bg-accent-hover text-white text-[12px] font-medium transition-all shadow-glow"
         >
           Export
         </button>

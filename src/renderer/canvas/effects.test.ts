@@ -1,27 +1,43 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// Mock image imports so vitest doesn't choke on .jpg/.png
+vi.mock('../assets/wallpapers/gradient-mesh.jpg', () => ({ default: '/mock/gradient-mesh.jpg' }))
+vi.mock('../assets/wallpapers/purple-gradient.jpg', () => ({ default: '/mock/purple-gradient.jpg' }))
+vi.mock('../assets/wallpapers/blue-abstract.jpg', () => ({ default: '/mock/blue-abstract.jpg' }))
+vi.mock('../assets/wallpapers/pastel-swirl.jpg', () => ({ default: '/mock/pastel-swirl.jpg' }))
+vi.mock('../assets/wallpapers/pink-wave.jpg', () => ({ default: '/mock/pink-wave.jpg' }))
+vi.mock('../assets/wallpapers/ocean.jpg', () => ({ default: '/mock/ocean.jpg' }))
+vi.mock('../assets/wallpapers/sunset-sky.jpg', () => ({ default: '/mock/sunset-sky.jpg' }))
+vi.mock('../assets/wallpapers/dark-gradient.jpg', () => ({ default: '/mock/dark-gradient.jpg' }))
+vi.mock('../assets/wallpapers/aurora-borealis.jpg', () => ({ default: '/mock/aurora-borealis.jpg' }))
+vi.mock('../assets/wallpapers/warm-abstract.jpg', () => ({ default: '/mock/warm-abstract.jpg' }))
+vi.mock('../assets/wallpapers/neon-abstract.jpg', () => ({ default: '/mock/neon-abstract.jpg' }))
+vi.mock('../assets/wallpapers/teal-gradient.jpg', () => ({ default: '/mock/teal-gradient.jpg' }))
+vi.mock('../assets/wallpapers/cloud-book.png', () => ({ default: '/mock/cloud-book.png' }))
+
 import { PRESET_BACKGROUNDS, backgroundToCSS } from './effects'
 import type { BackgroundConfig } from '../../shared/types'
 
 describe('PRESET_BACKGROUNDS', () => {
-  it('has 8 presets', () => {
-    expect(PRESET_BACKGROUNDS).toHaveLength(8)
+  it('has correct number of presets', () => {
+    expect(PRESET_BACKGROUNDS.length).toBeGreaterThanOrEqual(16)
   })
 
-  it('each preset has name and config', () => {
+  it('each preset has name, config, and thumbnailUrl', () => {
     for (const preset of PRESET_BACKGROUNDS) {
       expect(preset.name).toBeTruthy()
       expect(preset.config).toBeDefined()
-      expect(preset.config.type).toMatch(/^(solid|gradient)$/)
+      expect(preset.config.type).toMatch(/^(solid|gradient|image)$/)
+      expect(preset).toHaveProperty('thumbnailUrl')
     }
   })
 
-  it('gradient presets have start and end colors', () => {
-    const gradients = PRESET_BACKGROUNDS.filter((p) => p.config.type === 'gradient')
-    expect(gradients.length).toBeGreaterThan(0)
-    for (const g of gradients) {
-      expect(g.config.gradientStart).toBeTruthy()
-      expect(g.config.gradientEnd).toBeTruthy()
-      expect(g.config.gradientAngle).toBeDefined()
+  it('image presets have imagePath', () => {
+    const images = PRESET_BACKGROUNDS.filter((p) => p.config.type === 'image')
+    expect(images.length).toBeGreaterThan(0)
+    for (const img of images) {
+      expect(img.config.imagePath).toBeTruthy()
+      expect(img.thumbnailUrl).toBeTruthy()
     }
   })
 
@@ -35,9 +51,10 @@ describe('PRESET_BACKGROUNDS', () => {
 
   it('includes expected preset names', () => {
     const names = PRESET_BACKGROUNDS.map((p) => p.name)
-    expect(names).toContain('Purple Haze')
-    expect(names).toContain('Dark')
-    expect(names).toContain('White')
+    expect(names).toContain('Gradient Mesh')
+    expect(names).toContain('Cloud Book')
+    expect(names).toContain('Void')
+    expect(names).toContain('Snow')
   })
 })
 
@@ -62,16 +79,15 @@ describe('backgroundToCSS', () => {
     expect(backgroundToCSS(bg)).toBe('linear-gradient(90deg, #aaa, #bbb)')
   })
 
-  it('uses default values for gradient with missing fields', () => {
-    const bg: BackgroundConfig = { type: 'gradient' }
+  it('returns url() for image type', () => {
+    const bg: BackgroundConfig = { type: 'image', imagePath: '/path/to/image.jpg' }
     const css = backgroundToCSS(bg)
-    expect(css).toContain('135deg')
-    expect(css).toContain('#667eea')
-    expect(css).toContain('#764ba2')
+    expect(css).toContain('url(/path/to/image.jpg)')
+    expect(css).toContain('cover')
   })
 
-  it('returns black for image type (not supported in CSS)', () => {
-    const bg: BackgroundConfig = { type: 'image', imagePath: '/some/path.png' }
+  it('returns black for image with no path', () => {
+    const bg: BackgroundConfig = { type: 'image' }
     expect(backgroundToCSS(bg)).toBe('#000000')
   })
 })

@@ -1,6 +1,11 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, protocol, net } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc/handlers'
+
+// Register custom protocol for serving local files (avoids file:// cross-origin blocks in dev mode)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'clip', privileges: { stream: true, bypassCSP: true, supportFetchAPI: true } }
+])
 
 let mainWindow: BrowserWindow | null = null
 
@@ -10,7 +15,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 1000,
     minHeight: 700,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0c0c14',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
@@ -34,6 +39,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Handle clip:// protocol to serve local recording files
+  protocol.handle('clip', (request) => {
+    const filePath = decodeURIComponent(new URL(request.url).pathname)
+    return net.fetch('file://' + filePath)
+  })
+
   registerIpcHandlers()
   createWindow()
 

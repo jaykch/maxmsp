@@ -14,11 +14,10 @@ export const IPC = {
   LOAD_PROJECT: 'load-project'
 } as const
 
+// Default is a solid dark — the wallpaper images are set at runtime via the UI
 export const DEFAULT_BACKGROUND: import('./types').BackgroundConfig = {
-  type: 'gradient',
-  gradientStart: '#667eea',
-  gradientEnd: '#764ba2',
-  gradientAngle: 135
+  type: 'solid',
+  color: '#0c0c14'
 }
 
 export const RESOLUTION_PRESETS = {

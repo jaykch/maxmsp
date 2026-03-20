@@ -1,6 +1,6 @@
-import type { BackgroundConfig } from '../../shared/types'
-import { interpolateKeyframes } from '../utils/keyframes'
-import type { ZoomKeyframe } from '../../shared/types'
+import type { BackgroundConfig, ZoomKeyframe, ZoomSegment, InputEvent } from '../../shared/types'
+import { computeCameraState, interpolateKeyframes } from '../utils/keyframes'
+import { getCachedBackgroundImage, loadBackgroundImage } from './effects'
 
 export class PreviewRenderer {
   private canvas: HTMLCanvasElement
@@ -19,6 +19,8 @@ export class PreviewRenderer {
   render(
     currentTime: number,
     keyframes: ZoomKeyframe[],
+    zoomSegments: ZoomSegment[],
+    inputEvents: InputEvent[],
     background: BackgroundConfig,
     padding: number,
     borderRadius: number,
@@ -34,8 +36,12 @@ export class PreviewRenderer {
 
     if (!this.videoElement) return
 
-    // Get zoom state
-    const zoom = interpolateKeyframes(keyframes, currentTime)
+    // Get camera state — use zoom-follow if segments exist, otherwise legacy keyframes
+    const videoW = this.videoElement.videoWidth || 1920
+    const videoH = this.videoElement.videoHeight || 1080
+    const zoom = zoomSegments.length > 0
+      ? computeCameraState(currentTime, zoomSegments, inputEvents, videoW, videoH)
+      : interpolateKeyframes(keyframes, currentTime)
 
     // Calculate video dimensions with padding
     const videoAreaWidth = width - padding * 2
@@ -52,8 +58,28 @@ export class PreviewRenderer {
       drawWidth = videoAreaHeight * videoAspect
     }
 
-    const drawX = (width - drawWidth) / 2
-    const drawY = (height - drawHeight) / 2
+    // Round to whole pixels to prevent sub-pixel gaps
+    const drawX = Math.round((width - drawWidth) / 2)
+    const drawY = Math.round((height - drawHeight) / 2)
+    drawWidth = Math.round(drawWidth)
+    drawHeight = Math.round(drawHeight)
+
+    // Draw shadow outside the clip region so it doesn't peek through
+    if (shadow) {
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
+      ctx.shadowBlur = 30
+      ctx.shadowOffsetY = 10
+      if (borderRadius > 0) {
+        this.roundedRect(ctx, drawX, drawY, drawWidth, drawHeight, borderRadius)
+      } else {
+        ctx.beginPath()
+        ctx.rect(drawX, drawY, drawWidth, drawHeight)
+      }
+      ctx.fillStyle = '#000'
+      ctx.fill()
+      ctx.restore()
+    }
 
     ctx.save()
 
@@ -61,16 +87,6 @@ export class PreviewRenderer {
     if (borderRadius > 0) {
       this.roundedRect(ctx, drawX, drawY, drawWidth, drawHeight, borderRadius)
       ctx.clip()
-    }
-
-    // Apply shadow
-    if (shadow) {
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
-      ctx.shadowBlur = 30
-      ctx.shadowOffsetY = 10
-      ctx.fillStyle = '#000'
-      ctx.fillRect(drawX, drawY, drawWidth, drawHeight)
-      ctx.shadowColor = 'transparent'
     }
 
     // Apply zoom transform
@@ -107,6 +123,25 @@ export class PreviewRenderer {
       gradient.addColorStop(1, bg.gradientEnd || '#764ba2')
       ctx.fillStyle = gradient
       ctx.fillRect(0, 0, width, height)
+    } else if (bg.type === 'image' && bg.imagePath) {
+      const img = getCachedBackgroundImage(bg.imagePath)
+      if (img) {
+        const imgAspect = img.width / img.height
+        const canvasAspect = width / height
+        let sx = 0, sy = 0, sw = img.width, sh = img.height
+        if (imgAspect > canvasAspect) {
+          sw = img.height * canvasAspect
+          sx = (img.width - sw) / 2
+        } else {
+          sh = img.width / canvasAspect
+          sy = (img.height - sh) / 2
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
+      } else {
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(0, 0, width, height)
+        loadBackgroundImage(bg.imagePath)
+      }
     }
   }
 

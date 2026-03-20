@@ -10,7 +10,7 @@ interface UIState {
   showExportDialog: boolean
   exportState: ExportState
   exportProgress: number
-  activePanel: 'inspector' | 'backgrounds' | 'frames'
+  activePanel: 'inspector' | 'backgrounds' | 'crop' | 'frames'
   timelineZoom: number
 
   // Actions

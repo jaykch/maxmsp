@@ -59,9 +59,8 @@ const api = {
   },
 
   // Save recording data
-  saveRecordingChunk: (filePath: string, data: ArrayBuffer): void => {
-    ipcRenderer.send('save-recording-chunk', filePath, data)
-  }
+  saveRecordingChunk: (filePath: string, data: ArrayBuffer): Promise<void> =>
+    ipcRenderer.invoke('save-recording-chunk', filePath, data)
 }
 
 contextBridge.exposeInMainWorld('api', api)

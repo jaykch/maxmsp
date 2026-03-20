@@ -12,6 +12,8 @@ export const Preview: React.FC = () => {
 
   const clips = useProjectStore((s) => s.clips)
   const keyframes = useProjectStore((s) => s.zoomKeyframes)
+  const zoomSegments = useProjectStore((s) => s.zoomSegments)
+  const projectInputEvents = useProjectStore((s) => s.inputEvents)
   const background = useProjectStore((s) => s.background)
   const padding = useProjectStore((s) => s.padding)
   const borderRadius = useProjectStore((s) => s.borderRadius)
@@ -21,17 +23,14 @@ export const Preview: React.FC = () => {
   const setCurrentTime = useUIStore((s) => s.setCurrentTime)
   const recordingState = useRecordingStore((s) => s.state)
 
-  // Initialize renderer
   useEffect(() => {
     if (!canvasRef.current) return
-
     const canvas = canvasRef.current
     const container = canvas.parentElement!
     canvas.width = container.clientWidth * window.devicePixelRatio
     canvas.height = container.clientHeight * window.devicePixelRatio
     canvas.style.width = `${container.clientWidth}px`
     canvas.style.height = `${container.clientHeight}px`
-
     rendererRef.current = new PreviewRenderer(canvas)
 
     const resizeObserver = new ResizeObserver(() => {
@@ -41,87 +40,99 @@ export const Preview: React.FC = () => {
       canvas.style.height = `${container.clientHeight}px`
     })
     resizeObserver.observe(container)
-
     return () => {
       resizeObserver.disconnect()
       rendererRef.current?.destroy()
     }
   }, [])
 
-  // Load video when clips change
   useEffect(() => {
     if (clips.length === 0 || !videoRef.current) return
     const video = videoRef.current
-    // Use file:// protocol for local files in Electron
-    const src = clips[0].filePath.startsWith('file://')
-      ? clips[0].filePath
-      : `file://${clips[0].filePath}`
+    const filePath = clips[0].filePath
+    const src = 'clip://' + encodeURI(filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')
+    console.log('[preview] loading video:', src)
     video.src = src
     video.load()
     video.onloadedmetadata = () => {
+      console.log('[preview] video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration)
       rendererRef.current?.setVideo(video)
+    }
+    video.onerror = () => {
+      console.error('[preview] Failed to load video:', src, video.error)
+    }
+    video.onended = () => {
+      console.log('[preview] video ended')
+      useUIStore.getState().setIsPlaying(false)
     }
   }, [clips])
 
-  // Render loop
   const renderFrame = useCallback(() => {
     if (!rendererRef.current) return
-
-    rendererRef.current.render(
-      currentTime,
-      keyframes,
-      background,
-      padding,
-      borderRadius,
-      shadow
-    )
-
+    rendererRef.current.render(currentTime, keyframes, zoomSegments, projectInputEvents, background, padding, borderRadius, shadow)
     if (isPlaying && videoRef.current) {
       setCurrentTime(videoRef.current.currentTime)
     }
-
     animFrameRef.current = requestAnimationFrame(renderFrame)
-  }, [currentTime, keyframes, background, padding, borderRadius, shadow, isPlaying, setCurrentTime])
+  }, [currentTime, keyframes, zoomSegments, projectInputEvents, background, padding, borderRadius, shadow, isPlaying, setCurrentTime])
 
   useEffect(() => {
     animFrameRef.current = requestAnimationFrame(renderFrame)
     return () => cancelAnimationFrame(animFrameRef.current)
   }, [renderFrame])
 
-  // Sync video playback
   useEffect(() => {
     if (!videoRef.current) return
     if (isPlaying) {
-      videoRef.current.play()
+      console.log('[preview] play requested, readyState:', videoRef.current.readyState)
+      videoRef.current.play().catch((err) => {
+        console.error('[preview] play() rejected:', err)
+      })
     } else {
       videoRef.current.pause()
-      videoRef.current.currentTime = currentTime
     }
-  }, [isPlaying, currentTime])
+  }, [isPlaying])
+
+  useEffect(() => {
+    if (!videoRef.current || isPlaying) return
+    videoRef.current.currentTime = currentTime
+  }, [currentTime, isPlaying])
 
   const hasClips = clips.length > 0
   const isRecording = recordingState === 'recording'
 
   return (
-    <div className="flex-1 relative bg-surface flex items-center justify-center p-4">
+    <div className="flex-1 relative bg-surface overflow-hidden">
+      {/* Canvas always visible — renders background + video */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Overlay: empty state or recording indicator */}
       {!hasClips && !isRecording ? (
-        <div className="text-white/30 text-center">
-          <div className="text-4xl mb-3">&#127916;</div>
-          <p className="text-lg">No recording yet</p>
-          <p className="text-sm mt-1">Click &quot;Record&quot; to capture your screen</p>
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-black/20 backdrop-blur-sm border border-white/[0.08] flex items-center justify-center">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/30">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="10,8 16,12 10,16" fill="currentColor" />
+              </svg>
+            </div>
+            <p className="text-[13px] text-white/40">No recording yet</p>
+            <p className="text-[11px] text-white/20 mt-1">Click Record to capture your screen</p>
+          </div>
         </div>
       ) : null}
       {isRecording ? (
-        <div className="text-white text-center">
-          <div className="text-4xl mb-3 animate-pulse">&#128308;</div>
-          <p className="text-lg">Recording...</p>
-          <p className="text-sm mt-1 text-white/50">Click &quot;Stop Recording&quot; when done</p>
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-black/20 backdrop-blur-sm border border-danger/20 flex items-center justify-center">
+              <span className="w-4 h-4 rounded-full bg-danger animate-pulse" />
+            </div>
+            <p className="text-[13px] text-white/70">Recording...</p>
+            <p className="text-[11px] text-white/30 mt-1">Click Stop when done</p>
+          </div>
         </div>
       ) : null}
-      <canvas
-        ref={canvasRef}
-        className={`max-w-full max-h-full ${!hasClips ? 'hidden' : ''}`}
-      />
+
       <video ref={videoRef} className="hidden" muted playsInline />
     </div>
   )

@@ -8,21 +8,16 @@ import { ExportDialog } from './components/ExportDialog/ExportDialog'
 
 const App: React.FC = () => {
   return (
-    <div className="h-screen flex flex-col bg-surface">
+    <div className="h-screen flex flex-col bg-surface text-white">
       <Toolbar />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Main area: Preview */}
         <Preview />
-
-        {/* Right panel: Inspector */}
         <Inspector />
       </div>
 
-      {/* Bottom: Timeline */}
       <Timeline />
 
-      {/* Modals */}
       <SourcePicker />
       <ExportDialog />
     </div>

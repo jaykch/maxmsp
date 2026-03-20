@@ -29,17 +29,12 @@ describe('IPC constants', () => {
 })
 
 describe('DEFAULT_BACKGROUND', () => {
-  it('is a gradient type', () => {
-    expect(DEFAULT_BACKGROUND.type).toBe('gradient')
+  it('is a solid type', () => {
+    expect(DEFAULT_BACKGROUND.type).toBe('solid')
   })
 
-  it('has gradient colors defined', () => {
-    expect(DEFAULT_BACKGROUND.gradientStart).toBeTruthy()
-    expect(DEFAULT_BACKGROUND.gradientEnd).toBeTruthy()
-  })
-
-  it('has gradient angle', () => {
-    expect(DEFAULT_BACKGROUND.gradientAngle).toBe(135)
+  it('has color defined', () => {
+    expect(DEFAULT_BACKGROUND.color).toBeTruthy()
   })
 })
 
