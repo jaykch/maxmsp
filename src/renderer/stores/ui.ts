@@ -7,10 +7,11 @@ interface UIState {
   playbackSpeed: number
   selectedKeyframeId: string | null
   selectedClipId: string | null
+  selectedZoomSegmentId: string | null
   showExportDialog: boolean
   exportState: ExportState
   exportProgress: number
-  activePanel: 'inspector' | 'backgrounds' | 'crop' | 'frames'
+  activePanel: 'inspector' | 'zoom' | 'backgrounds' | 'crop' | 'frames'
   timelineZoom: number
 
   // Actions
@@ -19,10 +20,11 @@ interface UIState {
   setPlaybackSpeed: (speed: number) => void
   setSelectedKeyframeId: (id: string | null) => void
   setSelectedClipId: (id: string | null) => void
+  setSelectedZoomSegmentId: (id: string | null) => void
   setShowExportDialog: (show: boolean) => void
   setExportState: (state: ExportState) => void
   setExportProgress: (progress: number) => void
-  setActivePanel: (panel: 'inspector' | 'backgrounds' | 'frames') => void
+  setActivePanel: (panel: 'inspector' | 'zoom' | 'backgrounds' | 'crop' | 'frames') => void
   setTimelineZoom: (zoom: number) => void
   togglePlayback: () => void
 }
@@ -33,6 +35,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   playbackSpeed: 1,
   selectedKeyframeId: null,
   selectedClipId: null,
+  selectedZoomSegmentId: null,
   showExportDialog: false,
   exportState: 'idle',
   exportProgress: 0,
@@ -44,6 +47,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
   setSelectedKeyframeId: (selectedKeyframeId) => set({ selectedKeyframeId }),
   setSelectedClipId: (selectedClipId) => set({ selectedClipId }),
+  setSelectedZoomSegmentId: (selectedZoomSegmentId) => set({ selectedZoomSegmentId }),
   setShowExportDialog: (showExportDialog) => set({ showExportDialog }),
   setExportState: (exportState) => set({ exportState }),
   setExportProgress: (exportProgress) => set({ exportProgress }),

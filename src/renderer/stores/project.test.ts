@@ -176,7 +176,17 @@ describe('useProjectStore', () => {
         name: 'Loaded Project',
         clips: [],
         zoomKeyframes: [],
+        zoomSegments: [],
+        inputEvents: [],
         background: { type: 'solid' as const, color: '#000' },
+        crop: {
+          enabled: false,
+          aspect: '16:9',
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1
+        },
         deviceFrame: null,
         padding: 20,
         borderRadius: 8,

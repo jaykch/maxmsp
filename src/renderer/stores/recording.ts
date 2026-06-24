@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type { DesktopSource, RecordingState, InputEvent } from '../../shared/types'
 import { useProjectStore } from './project'
-import { generateAutoZoomKeyframes, generateZoomSegments } from '../utils/keyframes'
 
 interface RecordingStore {
   state: RecordingState
@@ -125,27 +124,12 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
         projectStore.addClip(filePath, duration)
         console.log('[recording] clip added to project store')
 
-        // Generate zoom segments + legacy keyframes and store input events for cursor follow
+        // Store input events and auto-generate zoom segments from detected clicks
         if (inputEvents.length > 0) {
+          const { generateZoomSegments } = await import('../utils/keyframes')
           const segments = generateZoomSegments(inputEvents, 1920, 1080)
-          const keyframes = generateAutoZoomKeyframes(inputEvents, 1920, 1080)
-
-          // Store zoom segments and input events for the camera follow system
-          useProjectStore.setState({
-            zoomSegments: segments,
-            inputEvents: inputEvents
-          })
-
-          // Also add legacy keyframes for timeline visualization
-          for (const kf of keyframes) {
-            projectStore.addZoomKeyframe({
-              time: kf.time,
-              x: kf.x,
-              y: kf.y,
-              scale: kf.scale,
-              easing: kf.easing
-            })
-          }
+          useProjectStore.setState({ inputEvents, zoomSegments: segments })
+          console.log('[recording] stored', inputEvents.length, 'events,', segments.length, 'zoom segments')
         }
 
         set({

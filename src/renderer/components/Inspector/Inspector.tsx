@@ -15,6 +15,9 @@ const ASPECT_PRESETS = [
 ]
 
 export const Inspector: React.FC = () => {
+  const clips = useProjectStore((s) => s.clips)
+  const zoomSegments = useProjectStore((s) => s.zoomSegments)
+  const updateZoomSegment = useProjectStore((s) => s.updateZoomSegment)
   const background = useProjectStore((s) => s.background)
   const setBackground = useProjectStore((s) => s.setBackground)
   const padding = useProjectStore((s) => s.padding)
@@ -29,6 +32,65 @@ export const Inspector: React.FC = () => {
   const setCrop = useProjectStore((s) => s.setCrop)
   const activePanel = useUIStore((s) => s.activePanel)
   const setActivePanel = useUIStore((s) => s.setActivePanel)
+  const selectedZoomSegmentId = useUIStore((s) => s.selectedZoomSegmentId)
+  const setSelectedZoomSegmentId = useUIStore((s) => s.setSelectedZoomSegmentId)
+  const setCurrentTime = useUIStore((s) => s.setCurrentTime)
+
+  const totalDuration = clips.reduce(
+    (acc, c) => Math.max(acc, c.offset + (c.endTime - c.startTime)),
+    0
+  )
+  const selectedSegment = zoomSegments.find((segment) => segment.id === selectedZoomSegmentId) ?? null
+
+  const getSegmentBounds = (segmentId: string) => {
+    const sorted = [...zoomSegments].sort((a, b) => a.startTime - b.startTime)
+    const index = sorted.findIndex((segment) => segment.id === segmentId)
+    const minStart = index > 0 ? sorted[index - 1].endTime + 0.05 : 0
+    const maxEnd = index < sorted.length - 1 ? sorted[index + 1].startTime - 0.05 : totalDuration
+    return { minStart, maxEnd }
+  }
+
+  const updateSelectedSegment = (updates: {
+    startTime?: number
+    endTime?: number
+    scale?: number
+    clickX?: number
+    clickY?: number
+  }) => {
+    if (!selectedSegment) return
+
+    const bounds = getSegmentBounds(selectedSegment.id)
+    const nextStart = updates.startTime ?? selectedSegment.startTime
+    const nextEnd = updates.endTime ?? selectedSegment.endTime
+    const minDuration = 0.1
+
+    const startTime = Math.max(bounds.minStart, Math.min(nextStart, nextEnd - minDuration))
+    const endTime = Math.min(bounds.maxEnd, Math.max(nextEnd, startTime + minDuration))
+
+    updateZoomSegment(selectedSegment.id, {
+      ...updates,
+      startTime,
+      endTime
+    })
+  }
+
+  const updateSelectedSegmentDuration = (duration: number) => {
+    if (!selectedSegment) return
+    const bounds = getSegmentBounds(selectedSegment.id)
+    const safeDuration = Math.max(0.1, duration)
+    const endTime = Math.min(bounds.maxEnd, selectedSegment.startTime + safeDuration)
+    const startTime = Math.max(bounds.minStart, endTime - safeDuration)
+
+    updateZoomSegment(selectedSegment.id, {
+      startTime,
+      endTime
+    })
+  }
+
+  const numberInputClass =
+    'w-full bg-white/[0.04] border border-surface-border rounded-md px-2.5 py-1.5 text-[12px] text-white/70 focus:outline-none focus:border-white/15 transition-colors'
+
+  const segmentDuration = selectedSegment ? selectedSegment.endTime - selectedSegment.startTime : 0
 
   const handleAspectChange = (aspect: string) => {
     setCrop({ aspect })
@@ -58,7 +120,7 @@ export const Inspector: React.FC = () => {
     <div className="w-60 bg-surface-light border-l border-surface-border flex flex-col overflow-y-auto">
       {/* Tabs */}
       <div className="flex border-b border-surface-border">
-        {(['inspector', 'crop', 'backgrounds', 'frames'] as const).map((panel) => (
+        {(['inspector', 'zoom', 'crop', 'backgrounds', 'frames'] as const).map((panel) => (
           <button
             key={panel}
             onClick={() => setActivePanel(panel)}
@@ -117,6 +179,191 @@ export const Inspector: React.FC = () => {
               </select>
             </div>
           </>
+        )}
+
+        {activePanel === 'zoom' && (
+          selectedSegment ? (
+            <>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-white/30 uppercase tracking-wider">Selected Zoom</label>
+                  <button
+                    onClick={() => setSelectedZoomSegmentId(null)}
+                    className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setCurrentTime(selectedSegment.startTime)}
+                    className="px-2 py-1.5 rounded-md bg-white/[0.04] text-[11px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition-colors"
+                  >
+                    Jump To Start
+                  </button>
+                  <button
+                    onClick={() => setCurrentTime((selectedSegment.startTime + selectedSegment.endTime) / 2)}
+                    className="px-2 py-1.5 rounded-md bg-white/[0.04] text-[11px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition-colors"
+                  >
+                    Jump To Middle
+                  </button>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] text-white/30 uppercase tracking-wider">Scale</label>
+                    <span className="text-[10px] text-white/20 font-mono">{selectedSegment.scale.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="4"
+                    step="0.1"
+                    value={selectedSegment.scale}
+                    onChange={(e) => updateSelectedSegment({ scale: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="4"
+                    step="0.1"
+                    value={selectedSegment.scale}
+                    onChange={(e) => updateSelectedSegment({ scale: Number(e.target.value) })}
+                    className={`${numberInputClass} mt-2`}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] text-white/30 uppercase tracking-wider">Start</label>
+                      <span className="text-[10px] text-white/20 font-mono">{selectedSegment.startTime.toFixed(2)}s</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(totalDuration, 0.1)}
+                      step="0.01"
+                      value={selectedSegment.startTime.toFixed(2)}
+                      onChange={(e) => updateSelectedSegment({ startTime: Number(e.target.value) })}
+                      className={numberInputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] text-white/30 uppercase tracking-wider">End</label>
+                      <span className="text-[10px] text-white/20 font-mono">{selectedSegment.endTime.toFixed(2)}s</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(totalDuration, 0.1)}
+                      step="0.01"
+                      value={selectedSegment.endTime.toFixed(2)}
+                      onChange={(e) => updateSelectedSegment({ endTime: Number(e.target.value) })}
+                      className={numberInputClass}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] text-white/30 uppercase tracking-wider">Duration</label>
+                    <span className="text-[10px] text-white/20 font-mono">{segmentDuration.toFixed(2)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max={Math.max(totalDuration, 0.1)}
+                    step="0.01"
+                    value={segmentDuration}
+                    onChange={(e) => updateSelectedSegmentDuration(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <input
+                    type="number"
+                    min="0.1"
+                    max={Math.max(totalDuration, 0.1)}
+                    step="0.01"
+                    value={segmentDuration.toFixed(2)}
+                    onChange={(e) => updateSelectedSegmentDuration(Number(e.target.value))}
+                    className={`${numberInputClass} mt-2`}
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] text-white/30 uppercase tracking-wider">Anchor X</label>
+                    <span className="text-[10px] text-white/20 font-mono">{selectedSegment.clickX.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={selectedSegment.clickX}
+                    onChange={(e) => updateSelectedSegment({ clickX: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={selectedSegment.clickX.toFixed(2)}
+                    onChange={(e) => updateSelectedSegment({ clickX: Number(e.target.value) })}
+                    className={`${numberInputClass} mt-2`}
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] text-white/30 uppercase tracking-wider">Anchor Y</label>
+                    <span className="text-[10px] text-white/20 font-mono">{selectedSegment.clickY.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={selectedSegment.clickY}
+                    onChange={(e) => updateSelectedSegment({ clickY: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={selectedSegment.clickY.toFixed(2)}
+                    onChange={(e) => updateSelectedSegment({ clickY: Number(e.target.value) })}
+                    className={`${numberInputClass} mt-2`}
+                  />
+                </div>
+
+                <div className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+                  <div className="flex items-center justify-between text-[10px] text-white/30 uppercase tracking-wider">
+                    <span>Summary</span>
+                    <span className="font-mono normal-case text-white/20">
+                      {selectedSegment.startTime.toFixed(2)}s to {selectedSegment.endTime.toFixed(2)}s
+                    </span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-white/35 leading-relaxed">
+                    This zoom will focus at {selectedSegment.scale.toFixed(1)}x around
+                    {' '}
+                    ({selectedSegment.clickX.toFixed(2)}, {selectedSegment.clickY.toFixed(2)}).
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-[11px] text-white/20 text-center py-10 leading-relaxed">
+              Select a zoom segment in the timeline to edit it.
+            </div>
+          )
         )}
 
         {activePanel === 'crop' && (

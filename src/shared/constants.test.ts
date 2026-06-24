@@ -62,7 +62,7 @@ describe('default values', () => {
     expect(DEFAULT_PADDING).toBe(40)
     expect(DEFAULT_BORDER_RADIUS).toBe(12)
     expect(AUTO_ZOOM_SCALE).toBe(2.0)
-    expect(AUTO_ZOOM_DURATION_MS).toBe(800)
+    expect(AUTO_ZOOM_DURATION_MS).toBe(4000)
     expect(ZOOM_EASE_DURATION_MS).toBe(300)
   })
 })

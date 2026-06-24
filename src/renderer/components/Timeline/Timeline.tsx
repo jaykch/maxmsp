@@ -1,8 +1,8 @@
-import React, { useRef, useCallback, useState } from 'react'
+import React, { useRef, useCallback } from 'react'
 import { useProjectStore } from '../../stores/project'
 import { useUIStore } from '../../stores/ui'
 import { formatTimecode } from '../../utils/time'
-import { AUTO_ZOOM_SCALE } from '../../../shared/constants'
+import { AUTO_ZOOM_SCALE, AUTO_ZOOM_DURATION_MS } from '../../../shared/constants'
 
 export const Timeline: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -17,9 +17,9 @@ export const Timeline: React.FC = () => {
   const isPlaying = useUIStore((s) => s.isPlaying)
   const togglePlayback = useUIStore((s) => s.togglePlayback)
   const timelineZoom = useUIStore((s) => s.timelineZoom)
-
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const selectedSegmentId = useUIStore((s) => s.selectedZoomSegmentId)
+  const setSelectedSegmentId = useUIStore((s) => s.setSelectedZoomSegmentId)
+  const setActivePanel = useUIStore((s) => s.setActivePanel)
 
   const totalDuration = clips.reduce(
     (acc, c) => Math.max(acc, c.offset + (c.endTime - c.startTime)),
@@ -28,7 +28,6 @@ export const Timeline: React.FC = () => {
 
   const pixelsPerSecond = 80 * timelineZoom
 
-  // Find the bounds a segment can occupy without overlapping neighbors
   const getSegmentBounds = (segId: string) => {
     const sorted = [...zoomSegments].sort((a, b) => a.startTime - b.startTime)
     const idx = sorted.findIndex((s) => s.id === segId)
@@ -37,9 +36,11 @@ export const Timeline: React.FC = () => {
     return { minStart, maxEnd }
   }
 
-  const handleTimelineClick = useCallback(
+  // Seek when clicking empty track space
+  const handleTrackClick = useCallback(
     (e: React.MouseEvent) => {
-      if (isDragging) return
+      const target = e.target as HTMLElement
+      if (target.closest('[data-zoom-segment]')) return
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
       const x = e.clientX - rect.left + containerRef.current.scrollLeft
@@ -47,7 +48,7 @@ export const Timeline: React.FC = () => {
       setCurrentTime(Math.max(0, Math.min(time, totalDuration)))
       setSelectedSegmentId(null)
     },
-    [pixelsPerSecond, totalDuration, setCurrentTime, isDragging]
+    [pixelsPerSecond, totalDuration, setCurrentTime, setSelectedSegmentId]
   )
 
   const handleDeleteSegment = () => {
@@ -59,31 +60,23 @@ export const Timeline: React.FC = () => {
 
   const handleAddZoomSegment = () => {
     if (totalDuration === 0) return
-
-    // Find a gap at the current playhead, or append at the end
-    const segDuration = 1.0
+    const segDuration = AUTO_ZOOM_DURATION_MS / 1000
     let start = currentTime
     let end = start + segDuration
-
-    // Sort existing segments
     const sorted = [...zoomSegments].sort((a, b) => a.startTime - b.startTime)
 
-    // Check for overlap and adjust
     for (const seg of sorted) {
       if (start < seg.endTime && end > seg.startTime) {
-        // Overlaps — push start to after this segment
         start = seg.endTime + 0.05
         end = start + segDuration
       }
     }
 
-    // Clamp to total duration
     if (end > totalDuration) {
       end = totalDuration
       start = Math.max(0, end - segDuration)
     }
 
-    // Final overlap check — if still overlapping, don't add
     const wouldOverlap = sorted.some(
       (seg) => start < seg.endTime && end > seg.startTime
     )
@@ -98,10 +91,22 @@ export const Timeline: React.FC = () => {
     })
   }
 
-  // Drag to resize/move segments with overlap prevention.
-  // Only starts dragging after mouse moves 3px — otherwise it's treated as a click.
-  const handleSegmentMouseDown = (e: React.MouseEvent, id: string, edge: 'left' | 'right' | 'body') => {
+  // Click to select a segment
+  const handleSegmentClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
+    if (selectedSegmentId === id) {
+      setSelectedSegmentId(null)
+    } else {
+      setSelectedSegmentId(id)
+      setActivePanel('zoom')
+    }
+  }
+
+  // Drag handles for resizing only — segment body uses normal click selection.
+  const handleDragStart = (e: React.PointerEvent, id: string, edge: 'left' | 'right') => {
+    e.stopPropagation()
+    e.preventDefault()
+
     const seg = zoomSegments.find((s) => s.id === id)
     if (!seg) return
 
@@ -109,44 +114,30 @@ export const Timeline: React.FC = () => {
     const origEnd = seg.endTime
     const startX = e.clientX
     const bounds = getSegmentBounds(id)
-    let didDrag = false
 
-    const handleMove = (ev: MouseEvent) => {
+    const handleMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX
-      if (!didDrag && Math.abs(dx) < 3) return // Dead zone — don't start dragging yet
-      didDrag = true
-      setIsDragging(true)
+      if (Math.abs(dx) < 3) return
 
       const dt = dx / pixelsPerSecond
-
       if (edge === 'left') {
-        const newStart = Math.max(bounds.minStart, Math.min(origStart + dt, origEnd - 0.1))
-        updateZoomSegment(id, { startTime: newStart })
-      } else if (edge === 'right') {
-        const newEnd = Math.min(bounds.maxEnd, Math.max(origEnd + dt, origStart + 0.1))
-        updateZoomSegment(id, { endTime: newEnd })
+        updateZoomSegment(id, {
+          startTime: Math.max(bounds.minStart, Math.min(origStart + dt, origEnd - 0.1))
+        })
       } else {
-        const duration = origEnd - origStart
-        let newStart = origStart + dt
-        newStart = Math.max(bounds.minStart, Math.min(newStart, bounds.maxEnd - duration))
-        updateZoomSegment(id, { startTime: newStart, endTime: newStart + duration })
+        updateZoomSegment(id, {
+          endTime: Math.min(bounds.maxEnd, Math.max(origEnd + dt, origStart + 0.1))
+        })
       }
     }
 
     const handleUp = () => {
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
-
-      if (!didDrag) {
-        // Was a click, not a drag — toggle selection
-        setSelectedSegmentId(selectedSegmentId === id ? null : id)
-      }
-      // Delay clearing so the timeline click handler doesn't also fire
-      setTimeout(() => setIsDragging(false), 0)
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
     }
 
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
   }
 
   const selectedSeg = zoomSegments.find((s) => s.id === selectedSegmentId)
@@ -172,7 +163,7 @@ export const Timeline: React.FC = () => {
         <div className="flex items-center gap-2 ml-auto">
           {selectedSeg && (
             <>
-              <span className="text-[10px] text-white/30">
+              <span className="text-[10px] text-white/30 font-mono">
                 {selectedSeg.scale.toFixed(1)}x &middot; {(selectedSeg.endTime - selectedSeg.startTime).toFixed(1)}s
               </span>
               <button
@@ -201,10 +192,10 @@ export const Timeline: React.FC = () => {
       <div
         ref={containerRef}
         className="flex-1 overflow-x-auto overflow-y-hidden relative cursor-crosshair"
-        onClick={handleTimelineClick}
+        onClick={handleTrackClick}
       >
         {/* Ruler */}
-        <div className="h-5 border-b border-surface-border relative" style={{ width: totalDuration * pixelsPerSecond }}>
+        <div className="h-5 border-b border-surface-border relative" style={{ width: Math.max(totalDuration * pixelsPerSecond, 1) }}>
           {Array.from({ length: Math.ceil(totalDuration) }, (_, i) => (
             <div
               key={i}
@@ -217,7 +208,7 @@ export const Timeline: React.FC = () => {
         </div>
 
         {/* Clip track */}
-        <div className="h-10 relative" style={{ width: totalDuration * pixelsPerSecond }}>
+        <div className="h-10 relative" style={{ width: Math.max(totalDuration * pixelsPerSecond, 1) }}>
           {clips.map((clip) => (
             <div
               key={clip.id}
@@ -233,8 +224,8 @@ export const Timeline: React.FC = () => {
         </div>
 
         {/* Zoom segment track */}
-        <div className="h-10 relative border-t border-surface-border" style={{ width: totalDuration * pixelsPerSecond }}>
-          <span className="absolute left-1.5 top-0.5 text-[9px] text-white/15 font-mono z-0">ZOOM</span>
+        <div className="h-12 relative border-t border-surface-border overflow-visible" style={{ width: Math.max(totalDuration * pixelsPerSecond, 1) }}>
+          <span className="absolute left-1.5 top-0.5 text-[9px] text-white/15 font-mono">ZOOM</span>
           {zoomSegments.map((seg) => {
             const isSelected = selectedSegmentId === seg.id
             const left = seg.startTime * pixelsPerSecond
@@ -243,33 +234,45 @@ export const Timeline: React.FC = () => {
             return (
               <div
                 key={seg.id}
-                className={`absolute top-1.5 h-7 rounded-md cursor-grab flex items-center transition-colors group ${
+                data-zoom-segment="true"
+                data-segment-id={seg.id}
+                className={`absolute top-2 h-8 rounded-md cursor-pointer flex items-center select-none ${
                   isSelected
-                    ? 'bg-amber-500/30 border border-amber-400/60 shadow-[0_0_8px_rgba(251,191,36,0.2)]'
-                    : 'bg-accent/20 border border-accent/30 hover:bg-accent/30'
+                    ? 'bg-amber-500/30 border-2 border-amber-400/70 shadow-[0_0_10px_rgba(251,191,36,0.25)] z-30'
+                    : 'bg-accent/25 border border-accent/40 hover:bg-accent/35 hover:border-accent/60 z-20'
                 }`}
-                style={{ left, width: Math.max(segWidth, 12) }}
-                onMouseDown={(e) => handleSegmentMouseDown(e, seg.id, 'body')}
+                style={{ left, width: Math.max(segWidth, 20) }}
               >
+                <button
+                  type="button"
+                  aria-label={`Select zoom segment ${seg.scale.toFixed(1)}x`}
+                  className="absolute inset-y-0 left-3 right-3 z-20 cursor-pointer bg-transparent"
+                  onClick={(e) => handleSegmentClick(e, seg.id)}
+                />
+
                 {/* Left resize handle */}
                 <div
-                  className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 flex items-center justify-center"
-                  onMouseDown={(e) => handleSegmentMouseDown(e, seg.id, 'left')}
+                  className="absolute left-0 top-0 bottom-0 w-3 cursor-col-resize z-30 flex items-center justify-center"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => handleDragStart(e, seg.id, 'left')}
                 >
-                  <div className="w-0.5 h-3 bg-white/30 rounded-full group-hover:bg-white/50" />
+                  <div className={`w-[3px] h-4 rounded-full ${isSelected ? 'bg-amber-400' : 'bg-white/25'}`} />
                 </div>
+
                 {/* Label */}
-                {segWidth > 30 && (
-                  <span className="text-[9px] text-white/50 px-3 truncate select-none pointer-events-none">
+                {segWidth > 40 && (
+                  <span className={`text-[10px] px-4 truncate pointer-events-none ${isSelected ? 'text-amber-300/80' : 'text-white/40'}`}>
                     {seg.scale.toFixed(1)}x
                   </span>
                 )}
+
                 {/* Right resize handle */}
                 <div
-                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 flex items-center justify-center"
-                  onMouseDown={(e) => handleSegmentMouseDown(e, seg.id, 'right')}
+                  className="absolute right-0 top-0 bottom-0 w-3 cursor-col-resize z-30 flex items-center justify-center"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => handleDragStart(e, seg.id, 'right')}
                 >
-                  <div className="w-0.5 h-3 bg-white/30 rounded-full group-hover:bg-white/50" />
+                  <div className={`w-[3px] h-4 rounded-full ${isSelected ? 'bg-amber-400' : 'bg-white/25'}`} />
                 </div>
               </div>
             )
@@ -278,10 +281,10 @@ export const Timeline: React.FC = () => {
 
         {/* Playhead */}
         <div
-          className="absolute top-0 bottom-0 w-px bg-white/40 z-10 pointer-events-none"
+          className="absolute top-0 bottom-0 w-px bg-white/50 z-20 pointer-events-none"
           style={{ left: currentTime * pixelsPerSecond }}
         >
-          <div className="w-2 h-2 bg-white rounded-full -ml-[3px] -mt-px" />
+          <div className="w-2.5 h-2.5 bg-white rounded-full -ml-[4px] -mt-px shadow-sm" />
         </div>
       </div>
     </div>

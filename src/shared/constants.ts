@@ -31,5 +31,5 @@ export const DEFAULT_FPS = 30
 export const DEFAULT_PADDING = 40
 export const DEFAULT_BORDER_RADIUS = 12
 export const AUTO_ZOOM_SCALE = 2.0
-export const AUTO_ZOOM_DURATION_MS = 800
+export const AUTO_ZOOM_DURATION_MS = 4000
 export const ZOOM_EASE_DURATION_MS = 300

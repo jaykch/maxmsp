@@ -76,7 +76,17 @@ describe('exportVideo', () => {
       }
     ],
     zoomKeyframes: [],
+    zoomSegments: [],
+    inputEvents: [],
     background: { type: 'solid', color: '#000000' },
+    crop: {
+      enabled: false,
+      aspect: '16:9',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1
+    },
     deviceFrame: null,
     padding: 40,
     borderRadius: 12,
